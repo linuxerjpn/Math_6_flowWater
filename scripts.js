@@ -69,6 +69,9 @@ let bJaguchi = false; //蛇口の水が水槽に到達したかどうか
 
 let totalTime = 0; //必要時間
 
+let stopper = 0;  //途中で水の流れを一時停止するためのもの
+
+
 //Aの表示・非表示ボタン
 let visible_A_X = 10;//630;
 let visible_A_Y = 50;//120;
@@ -93,20 +96,32 @@ let visible_ML_Y = 50;//520;
 let visible_Answer_X =230;// 1030;
 let visible_Answer_Y =50;// 520;
 
-//AやBの表示非表示
-let isShowA = isShowB = isShowAB = isShowEQ = isShowML = isShowAnswer = false;
+//A途中スタート・ストップボタン
+let runA_X = 10;
+let runA_Y = 100;
 
+//B途中スタート・ストップボタン
+let runB_X = 80;
+let runB_Y = 100;
+
+
+//AやBの表示非表示 runA、runB　の動作中・一時停止中のフラグ
+let isShowA = isShowB = isShowAB = isShowEQ = isShowML = isShowAnswer = isRunA = isRunB = false;
 
 /** リセットボタンが押下された.
  */
-function onMousePressedReset() {
+function onMousePressedReset() { /**{{{*/
   isFlowA = isFlowB = false;
   waterLevel = waterHeight = 0;
   bJaguchi = false;
+  isRunA = isRunB = false;
+  stopper = 0;
+  runA.html("A再生");
 }
+/**}}}*/
 
 //計算実行
-function onMousePressedCalculate() {
+function onMousePressedCalculate() { /** {{{*/
   
   //計算実行のため、テキストボックスのデータを取得する.
   
@@ -129,6 +144,7 @@ function onMousePressedCalculate() {
   
 
 }
+/**}}}*/
 
 
 /** setup()関数の先頭に記述してあるため、setup()よりも先に呼び出される.
@@ -154,7 +170,7 @@ function preload() { /** {{{*/
 //---------------------------------------
 // ★ iPad（ピンチでズーム）
 //---------------------------------------
-function touchMoved(event) {
+function touchMoved(event) { /**{{{*/
    // 2本指（ピンチズーム）
   if (touches.length == 2) {
     let t1 = touches[0];
@@ -204,13 +220,17 @@ function touchMoved(event) {
   }
   return false;
 }
+/**}}}*/
 
-function touchEnded() {
+
+function touchEnded() { /**{{{*/
    if (touches.length < 2) {
     lastTouchDist = null;
      isDragging = false;
   }
 }
+
+/**}}}*/
 
 /** 文字を強制的に数値に変換する.しかもエラーは一切出さないようにする.
  * @param str 読み込んだ文字列
@@ -231,7 +251,7 @@ function atoiLike(str) { /** {{{*/
 /**}}}*/
 
 /** 最初に1回だけ実行. 初期値の図形情報を詰め込むのはここ.
- * 図形情報はVector配列の集合体を、Zukeiクラスのインスタンスを配列で管理している.
+ * 
  */
 function setup(){ /** {{{*/
 	preload();
@@ -307,7 +327,7 @@ function setup(){ /** {{{*/
   btnVisible_A.position(visible_A_X, visible_A_Y);
   btnVisible_A.mousePressed(() => {
     isShowA = !isShowA;  
-  });;
+  });
 
   btnVisible_B = createButton('B');
   btnVisible_B.position(visible_B_X, visible_B_Y);
@@ -341,6 +361,36 @@ function setup(){ /** {{{*/
   btnVisible_Answer.mousePressed(()=>{
     isShowAnswer = !isShowAnswer;
   });
+  //runA
+  runA = createButton('A再生');
+  runA.position(runA_X, runA_Y);
+  runA.mousePressed(()=>{
+    if( isRunA ) {
+      stopper++;
+      if ( stopper > dAFlow  ) {
+	stopper = dAFlow;
+      }
+    } else {
+      isRunA = !isRunA;
+    }
+  });
+
+  console.log("B再生スタート");
+  //runB
+  runB = createButton('B再生');
+  runB.position(runB_X, runB_Y);
+  runB.mousePressed(()=> {
+    if ( isRunB ) {
+      stopper++;
+      if (stopper > dBFlow ) {
+	stopper = dBFlow;
+      }
+    } else {
+	isRunB = !isRunB;
+    }
+  });
+  console.log("B再生エンドisRunB = " + isRunB);
+
 
 
   lastMouseX = mouseX;
@@ -392,10 +442,10 @@ function setup(){ /** {{{*/
 /**}}}*/
 
 
-function chkboxevent() {
+function chkboxevent() { /**{{{*/
 	isGridChecked = chkbox.checked();
 }
-
+/**}}}*/
 
 
 
@@ -546,6 +596,8 @@ function draw(){ /** {{{*/
   btnVisible_EQ.position( offsetX + visible_EQ_X * wholeScale, offsetY + visible_EQ_Y*wholeScale);
   btnVisible_ML.position( offsetX + visible_ML_X * wholeScale, offsetY + visible_ML_Y*wholeScale);
   btnVisible_Answer.position( offsetX + visible_Answer_X * wholeScale, offsetY + visible_Answer_Y*wholeScale);
+  runA.position( offsetX + runA_X * wholeScale, offsetY + runA_Y * wholeScale);
+  runB.position( offsetX + runB_X * wholeScale, offsetY + runB_Y * wholeScale);
 
 
   /*if ( isPC == true ) {
@@ -587,6 +639,10 @@ function draw(){ /** {{{*/
 
   //水を流すアニメーション
   drawTankWater(tankWidth, tankHeight);
+
+  //A,Bに対して、分割分ずつ水を入れていく.
+  drawDevideTankWater(tankWidth, tankHeight);
+
 
   //バーを表示する.
   drawBar('A');
@@ -853,10 +909,118 @@ function drawFraction(x, y, numerator, denominator) { /** {{{*/
 /**}}}*/
 
 
+/** 水槽の中の水を順番に入れていく.
+ * A,Bそれぞれのボタンを用意して、押下されたら、水を流して、
+ * 1/a で、水を一旦止める.また、ボタンが押下されたら、2/a ・・・ 3/aと
+ * 繰り返していき、a/aまで進む.a/aで以上にはならない。
+ * @param tankWidth 水槽の幅
+ * @param tankHeight 水槽の高さ
+ **/
+function drawDevideTankWater( tankWidth, tankHeight ) { /** {{{*/
+
+  //一時停止、再生の表示を変える.
+  isRunA ? runA.html("次") : runA.html("A再生");
+
+  //まず、ボタンが押下されたかどうか.
+  //console.log("runA = " + isRunA);
+  
+  if ( isRunA ) {//runAモード[Aの蛇口を途中で切っていきながら流していく.]
+    //水が伸びていくアニメーション
+    drawJaguchiWater(tankWidth, tankHeight, "A");
+
+    //水槽に水をためる
+    drawStorageTank( tankWidth, tankHeight, "A");
+  }
+
+  if ( isRunB ) {
+    //水が伸びていくアニメーション
+    drawJaguchiWater(tankWidth, tankHeight, "B");
+
+    //水槽に水をためる
+    drawStorageTank( tankWidth, tankHeight, "B");
+    
+  }
+}
+/**}}}*/
+
+
+/** 水槽に水をためる
+ * @param tankWidth 水槽の幅
+ * @param tankHeight 水槽の高さ
+ * @param szX "A":Aを選択 "B":Bを選択
+ **/
+function drawStorageTank(tankWidth, tankHeight, szX) {
+  let dXFlow;//流量
+  if ( szX == "A" ) {
+    dXFlow = dAFlow;
+  } else if ( szX == "B" ) {
+    dXFlow = dBFlow;
+  }
+
+  if ( bJaguchi ) {
+    let flowSpeed = ( 1 / (( dXFlow))*10);
+
+    startWaterSound();
+    if ( waterLevel > ( tankHeight / dXFlow ) * stopper ) { /**途中で止める*/
+      stopWaterSound();
+    } else {
+      waterLevel += flowSpeed;
+    }
+
+    if (waterLevel > tankHeight ) {
+      waterLevel = tankHeight;
+      stopWaterSound();
+    }
+
+    //水をためる描画
+    noStroke();
+    fill( 0, 150, 255, 180 );
+    rect( 51, 499, tankWidth -2, -waterLevel );
+  }
+}
+
+
+/** 水が伸びていくアニメーションを描画する.
+ * @param tankWidth 水槽の幅
+ * @param tankHeight 水槽の高さ
+ * @param szX "A": Aを選択  "B": Bを選択
+ **/
+function drawJaguchiWater(tankWidth, tankHeight, szX) {
+  let point_X;//蛇口の水のX座標
+  let point_Y;//蛇口の水のY座標
+  let dXFlow;//流量
+  if ( szX == "A" ) {
+    console.log("Aを選択");
+    point_X = 100 + 85;
+    point_Y = 150 + 43 + 18;
+    dXFlow = dAFlow;
+  } else if ( szX == "B" ) {
+    point_X = 500 - 205;
+    point_Y = 150 + 43 + 18;
+    dXFlow = dBFlow;
+    console.log("Bを選択");
+  } else {
+    //AでもBでもないので、バグ
+  }
+  waterHeight += 5;
+  if ( !bJaguchi ) {
+    drawWater( point_X, point_Y, waterHeight, dXFlow );
+    if ( waterHeight >= 285 ) {
+      waterHeight-=5;
+      bJaguchi = true; //蛇口のみずがそこに溜まってからじゃないと、水位は上がらないはず.
+    }
+  } else { //たまった後なので、tankHeightは定義されている.
+    if ( tankHeight - waterLevel - 13 > 0 ) {
+      drawWater( point_X, point_Y, tankHeight-waterLevel-13, dXFlow );
+    }
+  }
+
+}
+
+
 /** 水槽の中の水を描画する.*/
 function drawTankWater(tankWidth, tankHeight) { /** {{{*/
    if ( isFlowA || isFlowB ) {
-    console.log("水を流す");
     //水が伸びていくアニメーション
     waterHeight+=5;//速度
     //蛇口の下に水を描く
@@ -895,7 +1059,7 @@ function drawTankWater(tankWidth, tankHeight) { /** {{{*/
 }
 /**}}}*/
 
-function drawWater(x, y, h, dFlow) {
+function drawWater(x, y, h, dFlow) { /** {{{*/
   if ( dFlow != 0) {
     fill(0, 150, 255, 180); // 水色
     noStroke();
@@ -903,6 +1067,8 @@ function drawWater(x, y, h, dFlow) {
     rect(x + min(10, dFlow/2), y, max(1,22-dFlow), h);  // x,y を水の出る位置として、20px幅で描画
   }
 }
+/**}}}*/
+
 
 /**水槽を描画する.
  * @param iWidth 横幅
@@ -992,7 +1158,7 @@ function lcm(a, b) { /**{{{*/
 
 
 
-function startWaterSound() {
+function startWaterSound() { /** {{{*/
   if ( !audioCtx ) {
     audioCtx = getAudioContext();
   }
@@ -1039,17 +1205,19 @@ function startWaterSound() {
   lfo.start();
   */
 } 
+/**}}}*/
 
-function stopWaterSound() {
+function stopWaterSound() { /** {{{*/
   if ( !running) return;
   running = false;
 
   noise.stop();
   //bubbleOsc.stop();
 }
+/**}}}*/
 
 // ▼ waterLevel に応じて音を変化（0〜287）
-function updateWaterLevelSound(waterLevel) {
+function updateWaterLevelSound(waterLevel) { /** {{{*/
   if (!running) return;
 
   // 0.0〜1.0 に正規化
@@ -1064,11 +1232,11 @@ function updateWaterLevelSound(waterLevel) {
   // 泡の強さ：最初は強く、満水でゼロ
   bubbleGain.gain.value = 0.2 * (1 - t);
 }
+/**}}}*/
 
 
 
-
-function waterRiseLoop() {
+function waterRiseLoop() { /** {{{*/
   waterH += 0.01;
   if (waterH >= 1) {
     stopWaterSound();
@@ -1083,8 +1251,11 @@ function waterRiseLoop() {
   // 次フレーム
   setTimeout(waterRiseLoop, 50);
 }
+/**}}}*/
 
-function playBubble() {
+
+
+function playBubble() { /** {{{*/
   // ランダム気泡音
   const osc = audioCtx.createOscillator();
   const bubbleGain = audioCtx.createGain();
@@ -1104,7 +1275,7 @@ function playBubble() {
   osc.start();
   osc.stop(audioCtx.currentTime + 0.3);
 }
-
+/**}}}*/
 
 /*
 Fraction.js v4.2.0 05/03/2022
@@ -1113,6 +1284,7 @@ https://www.xarg.org/2014/03/rational-numbers-in-javascript/
 Copyright (c) 2021, Robert Eisele (robert@xarg.org)
 Dual licensed under the MIT or GPL Version 2 licenses.
 */
+/**{{{*/
 (function(z){function p(a,c){var b=0,d=1,f=1,l=0,k=0,t=0,x=1,u=1,g=0,h=1,v=1,q=1;if(void 0!==a&&null!==a)if(void 0!==c){if(b=a,d=c,f=b*d,0!==b%1||0!==d%1)throw m.NonIntegerParameter;}else switch(typeof a){case "object":if("d"in a&&"n"in a)b=a.n,d=a.d,"s"in a&&(b*=a.s);else if(0 in a)b=a[0],1 in a&&(d=a[1]);else throw m.InvalidParameter;f=b*d;break;case "number":0>a&&(f=a,a=-a);if(0===a%1)b=a;else if(0<a){1<=a&&(u=Math.pow(10,Math.floor(1+Math.log(a)/Math.LN10)),a/=u);for(;1E7>=h&&1E7>=q;)if(b=(g+
 v)/(h+q),a===b){1E7>=h+q?(b=g+v,d=h+q):q>h?(b=v,d=q):(b=g,d=h);break}else a>b?(g+=v,h+=q):(v+=g,q+=h),1E7<h?(b=v,d=q):(b=g,d=h);b*=u}else if(isNaN(a)||isNaN(c))d=b=NaN;break;case "string":h=a.match(/\d+|./g);if(null===h)throw m.InvalidParameter;"-"===h[g]?(f=-1,g++):"+"===h[g]&&g++;if(h.length===g+1)k=r(h[g++],f);else if("."===h[g+1]||"."===h[g]){"."!==h[g]&&(l=r(h[g++],f));g++;if(g+1===h.length||"("===h[g+1]&&")"===h[g+3]||"'"===h[g+1]&&"'"===h[g+3])k=r(h[g],f),x=Math.pow(10,h[g].length),g++;if("("===
 h[g]&&")"===h[g+2]||"'"===h[g]&&"'"===h[g+2])t=r(h[g+1],f),u=Math.pow(10,h[g+1].length)-1,g+=3}else"/"===h[g+1]||":"===h[g+1]?(k=r(h[g],f),x=r(h[g+2],1),g+=3):"/"===h[g+3]&&" "===h[g+1]&&(l=r(h[g],f),k=r(h[g+2],f),x=r(h[g+4],1),g+=5);if(h.length<=g){d=x*u;f=b=t+d*l+u*k;break}default:throw m.InvalidParameter;}if(0===d)throw m.DivisionByZero;e.s=0>f?-1:1;e.n=Math.abs(b);e.d=Math.abs(d)}function r(a,c){if(isNaN(a=parseInt(a,10)))throw m.InvalidParameter;return a*c}function n(a,c){if(0===c)throw m.DivisionByZero;
@@ -1125,4 +1297,6 @@ isNaN(this.d))return this;a=a||.001;for(var c=this.abs(),b=c.toContinued(),d=1;d
 b="",d=this.n,f=this.d;0>this.s&&(b+="-");1===f?b+=d:(a&&0<(c=Math.floor(d/f))&&(b+=c,d%=f),b=b+"\\frac{"+d+"}{"+f,b+="}");return b},toContinued:function(){var a=this.n,c=this.d,b=[];if(isNaN(a)||isNaN(c))return b;do{b.push(Math.floor(a/c));var d=a%c;a=c;c=d}while(1!==a);return b},toString:function(a){var c=this.n,b=this.d;if(isNaN(c)||isNaN(b))return"NaN";var d;a:{for(d=b;0===d%2;d/=2);for(;0===d%5;d/=5);if(1===d)d=0;else{for(var f=10%d,l=1;1!==f;l++)if(f=10*f%d,2E3<l){d=0;break a}d=l}}a:{f=1;l=
 10;for(var k=d,t=1;0<k;l=l*l%b,k>>=1)k&1&&(t=t*l%b);l=t;for(k=0;300>k;k++){if(f===l){l=k;break a}f=10*f%b;l=10*l%b}l=0}f=0>this.s?"-":"";f+=c/b|0;(c=c%b*10)&&(f+=".");if(d){for(a=l;a--;)f+=c/b|0,c%=b,c*=10;f+="(";for(a=d;a--;)f+=c/b|0,c%=b,c*=10;f+=")"}else for(a=a||15;c&&a--;)f+=c/b|0,c%=b,c*=10;return f}};"function"===typeof define&&define.amd?define([],function(){return m}):"object"===typeof exports?(Object.defineProperty(m,"__esModule",{value:!0}),m["default"]=m,m.Fraction=m,module.exports=m):
 z.Fraction=m})(this);
+/**}}}*/
+
 
